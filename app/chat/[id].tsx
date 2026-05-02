@@ -1,14 +1,19 @@
-import {useLocalSearchParams} from 'expo-router';
+import {Stack, useLocalSearchParams} from 'expo-router';
 import {collection, doc, onSnapshot, orderBy, query, serverTimestamp, writeBatch} from 'firebase/firestore';
 import React, {useEffect, useState} from 'react';
-import {ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View} from 'react-native';
-import {db} from '../../utils/firebase';
-
-const CURRENT_USER_ID = 'DhqIGBMyZKh8p0PNOB7N';
+import {useTranslation} from 'react-i18next';
+import {ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, View} from 'react-native';
+import ChatItem from '../../components/ChatItem';
+import MessageInput from '../../components/MessageInput';
+import MessageItem from '../../components/MessageItem';
+import {auth, db} from '../../utils/firebase';
 
 export default function ChatScreen() {
-  const { id } = useLocalSearchParams();
+  const { t } = useTranslation();
+  const CURRENT_USER_ID = auth.currentUser?.uid;
+  const { id, chatName, chatEmail } = useLocalSearchParams();
   const chatId = id as string;
+  const displayName = (chatName as string) || t('chatList.unknown_chat');
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -72,21 +77,23 @@ export default function ChatScreen() {
 
   const renderItem = ({ item }: { item: any }) => {
     const isMine = item.senderId === CURRENT_USER_ID;
-    return (
-      <View style={[styles.messageBubble, isMine ? styles.myMessage : styles.theirMessage]}>
-        <Text style={[styles.messageText, isMine ? styles.myMessageText : styles.theirMessageText]}>
-          {item.text}
-        </Text>
-      </View>
-    );
+    return <MessageItem item={item} isMine={isMine} />;
   };
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 130}
     >
+      <Stack.Screen options={{
+        headerTitle: () => (
+          <ChatItem
+            item={{ chatName: displayName, chatEmail: chatEmail as string || '' }}
+            onPress={() => {}}
+          />
+        )
+      }} />
       <FlatList
         data={messages}
         keyExtractor={(item) => item.id}
@@ -94,19 +101,11 @@ export default function ChatScreen() {
         inverted // Messages are fetched desc, so invert flatlist to show newest at bottom
         contentContainerStyle={styles.messagesList}
       />
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          value={newMessage}
-          onChangeText={setNewMessage}
-          placeholder="Введите сообщение..."
-          placeholderTextColor="#999"
-          multiline
-        />
-        <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
-          <Text style={styles.sendButtonText}>Отправить</Text>
-        </TouchableOpacity>
-      </View>
+      <MessageInput
+        message={newMessage}
+        setMessage={setNewMessage}
+        onSend={sendMessage}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -124,63 +123,5 @@ const styles = StyleSheet.create({
   messagesList: {
     paddingHorizontal: 15,
     paddingBottom: 15,
-  },
-  messageBubble: {
-    maxWidth: '80%',
-    padding: 12,
-    borderRadius: 20,
-    marginTop: 8,
-  },
-  myMessage: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#007AFF',
-    borderBottomRightRadius: 4,
-  },
-  theirMessage: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#E5E5EA',
-    borderBottomLeftRadius: 4,
-  },
-  messageText: {
-    fontSize: 16,
-  },
-  myMessageText: {
-    color: '#fff',
-  },
-  theirMessageText: {
-    color: '#000',
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    padding: 10,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    alignItems: 'flex-end',
-  },
-  input: {
-    flex: 1,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingTop: 10,
-    paddingBottom: 10,
-    fontSize: 16,
-    maxHeight: 100,
-  },
-  sendButton: {
-    marginLeft: 10,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    backgroundColor: '#007AFF',
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 5,
-  },
-  sendButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
   },
 });

@@ -1,17 +1,26 @@
-import {useRouter} from 'expo-router';
+import {Stack, useRouter} from 'expo-router';
 import {addDoc, collection, documentId, getDocs, onSnapshot, query, serverTimestamp, where} from 'firebase/firestore';
 import React, {useEffect, useState} from 'react';
-import {ActivityIndicator, Button, FlatList, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
-import {db} from '../utils/firebase';
-
-const CURRENT_USER_ID = 'DhqIGBMyZKh8p0PNOB7N';
+import {useTranslation} from 'react-i18next';
+import {ActivityIndicator, Alert, Button, FlatList, StyleSheet, Text, View} from 'react-native';
+import ChatItem from '../components/ChatItem';
+import CreateChatInput from '../components/CreateChatInput';
+import {auth, db} from '../utils/firebase';
 
 export default function ChatListScreen() {
+  const { t, i18n } = useTranslation();
   const [chats, setChats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [newChatEmail, setNewChatEmail] = useState('');
+  const [addingUser, setAddingUser] = useState(false);
+  const [hasEmailError, setHasEmailError] = useState(false);
   const router = useRouter();
 
+  const CURRENT_USER_ID = auth.currentUser?.uid;
+
   useEffect(() => {
+    if (!CURRENT_USER_ID) return;
+
     console.log("Initializing chat query for user:", CURRENT_USER_ID);
     const q = query(
       collection(db, 'chats'),
@@ -19,57 +28,52 @@ export default function ChatListScreen() {
     );
 
     const unsubscribe = onSnapshot(q, async (querySnapshot) => {
-      console.log("Chats snapshot received, documents:", querySnapshot);
       const chatData: any[] = [];
       const userIdsToFetch = new Set<string>();
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         if (data.participants) {
-            data.participants.forEach((uid: string) => {
-              if (uid !== CURRENT_USER_ID) {
-                  userIdsToFetch.add(uid);
-              } else if (data.participants.length === 1) {
-                  // myself chat
-                  userIdsToFetch.add(uid);
-              }
-            });
+          data.participants.forEach((uid: string) => {
+            if (uid !== CURRENT_USER_ID) {
+              userIdsToFetch.add(uid);
+            } else if (data.participants.length === 1) {
+              userIdsToFetch.add(uid);
+            }
+          });
         }
         chatData.push({ id: doc.id, ...data });
       });
 
-      // Fetch user details for other participants
       const usersMap: Record<string, any> = {};
       if (userIdsToFetch.size > 0) {
-         const usersRef = collection(db, 'users');
-         // Firestore 'in' query supports max 10 elements.
-         const userIdsArray = Array.from(userIdsToFetch).slice(0, 10);
-         try {
-             const usersQuery = query(usersRef, where(documentId(), 'in', userIdsArray));
-             const usersSnapshot = await getDocs(usersQuery);
-             usersSnapshot.forEach(doc => {
-               usersMap[doc.id] = doc.data();
-             });
-         } catch (err) {
-             console.error("Error fetching users:", err);
-         }
+        const usersRef = collection(db, 'users');
+        const userIdsArray = Array.from(userIdsToFetch).slice(0, 10);
+        try {
+          const usersQuery = query(usersRef, where(documentId(), 'in', userIdsArray));
+          const usersSnapshot = await getDocs(usersQuery);
+          usersSnapshot.forEach(doc => {
+            usersMap[doc.id] = doc.data();
+          });
+        } catch (err) {
+          console.error("Error fetching users:", err);
+        }
       }
 
       const formattedChats = chatData.map(chat => {
         let targetUserId = chat.participants ? chat.participants.find((uid: string) => uid !== CURRENT_USER_ID) : null;
         if (!targetUserId && chat.participants && chat.participants.includes(CURRENT_USER_ID)) {
-            // Чат с самим собой
-            targetUserId = CURRENT_USER_ID;
+          targetUserId = CURRENT_USER_ID;
         }
 
         const targetUser = targetUserId ? usersMap[targetUserId] : null;
 
-        let chatName = 'Unknown Chat';
+        let chatName = t('chatList.unknown_chat');
         if (targetUser) {
-           chatName = `${targetUser.firstName} ${targetUser.lastName}`;
-           if (targetUserId === CURRENT_USER_ID) {
-               chatName += ' (Вы)';
-           }
+          chatName = `${targetUser.firstName} ${targetUser.lastName}`;
+          if (targetUserId === CURRENT_USER_ID) {
+            chatName += t('chatList.saved_messages_tag');
+          }
         }
 
         return {
@@ -79,11 +83,10 @@ export default function ChatListScreen() {
         };
       });
 
-      // Sort by lastMessageTimestamp if available
       formattedChats.sort((a, b) => {
         const timeA = a.lastMessageTimestamp?.toMillis() || 0;
         const timeB = b.lastMessageTimestamp?.toMillis() || 0;
-        return timeB - timeA; // Descending
+        return timeB - timeA;
       });
 
       setChats(formattedChats);
@@ -94,26 +97,65 @@ export default function ChatListScreen() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [CURRENT_USER_ID, t]);
 
-  const createTestChat = async () => {
-    try {
-      // Create a dummy user first so we have a name
-      const testUserId = 'test_user_' + Math.floor(Math.random() * 1000);
-      /*
-        We are not actually creating the user doc here to keep it simple,
-        it will just show "Unknown Chat" if user doc doesn't exist,
-        which is fine for testing the list.
-      */
-
-      const docRef = await addDoc(collection(db, 'chats'), {
-        participants: [CURRENT_USER_ID, testUserId],
-        lastMessageTimestamp: serverTimestamp()
-      });
-      console.log("Test chat created with ID: ", docRef.id);
-    } catch (e) {
-      console.error("Error creating test chat: ", e);
+  const handleAddUser = async () => {
+    if (!CURRENT_USER_ID) return;
+    if (!newChatEmail.trim()) {
+      Alert.alert(t('auth.title_email'), t('chatList.error_email_empty'));
+      return;
     }
+
+    setAddingUser(true);
+    try {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('email', '==', newChatEmail.trim().toLowerCase()));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        Alert.alert(t('auth.title_email'), t('chatList.error_user_not_found'));
+        setHasEmailError(true);
+        setAddingUser(false);
+        return;
+      }
+
+      const otherUserId = querySnapshot.docs[0].id;
+
+      const chatExists = chats.some(chat => {
+        if (otherUserId === CURRENT_USER_ID) {
+          return chat.participants?.length === 1;
+        }
+        return chat.participants?.includes(otherUserId);
+      });
+
+      if (chatExists) {
+        Alert.alert(t('auth.title_email'), t('chatList.error_chat_exists'));
+      } else {
+        const otherUser = querySnapshot.docs[0].data();
+        let chatName = `${otherUser.firstName} ${otherUser.lastName}`;
+        if (otherUserId === CURRENT_USER_ID) {
+          chatName += t('chatList.saved_messages_tag');
+        }
+
+        const participants = otherUserId === CURRENT_USER_ID ? [CURRENT_USER_ID] : [CURRENT_USER_ID, otherUserId];
+        const docRef = await addDoc(collection(db, 'chats'), {
+          participants,
+          lastMessageTimestamp: serverTimestamp()
+        });
+        setNewChatEmail('');
+        router.push({ pathname: '/chat/[id]', params: { id: docRef.id, chatName, chatEmail: otherUser.email } });
+      }
+    } catch (e: any) {
+      console.error("Error creating chat: ", e);
+      Alert.alert(t('auth.title_email'), e.message);
+    } finally {
+      setAddingUser(false);
+    }
+  };
+
+  const toggleLanguage = () => {
+    const nextLang = i18n.language === 'ru' ? 'en' : 'ru';
+    i18n.changeLanguage(nextLang);
   };
 
   if (loading) {
@@ -125,40 +167,38 @@ export default function ChatListScreen() {
   }
 
   const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={styles.chatItem}
-      onPress={() => router.push(`/chat/${item.id}`)}
-    >
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{item.chatName.charAt(0)}</Text>
-      </View>
-      <View style={styles.chatInfo}>
-        <Text style={styles.chatName}>{item.chatName}</Text>
-        {!!item.chatEmail && <Text style={styles.chatEmail}>{item.chatEmail}</Text>}
-      </View>
-    </TouchableOpacity>
+    <ChatItem item={item} onPress={() => router.push({ pathname: '/chat/[id]', params: { id: item.id, chatName: item.chatName, chatEmail: item.chatEmail } })} />
   );
 
   return (
     <View style={styles.container}>
+      <Stack.Screen options={{
+        headerRight: () => (
+          <View style={styles.headerRightContainer}>
+            <Button title={i18n.language === 'ru' ? 'EN' : 'RU'} onPress={toggleLanguage} />
+          </View>
+        )
+      }} />
+      <CreateChatInput
+        email={newChatEmail}
+        setEmail={(val) => {
+          setNewChatEmail(val);
+          if (hasEmailError) setHasEmailError(false);
+        }}
+        onAddUser={handleAddUser}
+        addingUser={addingUser}
+        hasError={hasEmailError}
+      />
       <FlatList
         data={chats}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         ListEmptyComponent={
           <View style={styles.centered}>
-            <Text style={styles.emptyText}>У вас пока нет чатов</Text>
-            <View style={{ marginTop: 20 }}>
-              <Button title="Создать тестовый чат" onPress={createTestChat} />
-            </View>
+            <Text style={styles.emptyText}>{t('chatList.empty')}</Text>
           </View>
         }
       />
-      {chats.length > 0 && (
-         <View style={{ padding: 20 }}>
-           <Button title="Создать еще чат" onPress={createTestChat} />
-         </View>
-      )}
     </View>
   );
 }
@@ -174,41 +214,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  chatItem: {
-    flexDirection: 'row',
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#007AFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 15,
-  },
-  avatarText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  chatInfo: {
-    flex: 1,
-  },
-  chatName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  chatEmail: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 2,
-  },
   emptyText: {
     fontSize: 16,
     color: '#666',
+  },
+  headerRightContainer: {
+    marginRight: 20,
   }
 });
