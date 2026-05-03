@@ -1,6 +1,10 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {initializeApp} from 'firebase/app';
+// @ts-ignore: getReactNativePersistence exists in RN bundle (dist/rn/index.js)
+// but is missing from default TS types (auth-public.d.ts)
+import {getAuth, getReactNativePersistence, initializeAuth} from 'firebase/auth';
 import {getFirestore} from 'firebase/firestore';
-import {getAuth} from 'firebase/auth';
+import {Platform} from 'react-native';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -13,7 +17,14 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth(app);
 
-export {db, auth};
+// On native platforms (Android/iOS), use AsyncStorage for auth persistence.
+// On web, use default persistence (IndexedDB).
+const auth = Platform.OS === 'web'
+  ? getAuth(app)
+  : initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+
+export {auth, db};
 

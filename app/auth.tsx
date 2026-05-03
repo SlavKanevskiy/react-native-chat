@@ -94,6 +94,7 @@ export default function AuthScreen() {
             <TextInput
               style={styles.input}
               placeholder={t('auth.email_placeholder')}
+              placeholderTextColor="#555"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -112,6 +113,7 @@ export default function AuthScreen() {
             <TextInput
               style={styles.input}
               placeholder={t('auth.password_placeholder')}
+              placeholderTextColor="#555"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -131,18 +133,21 @@ export default function AuthScreen() {
             <TextInput
               style={styles.input}
               placeholder={t('auth.first_name_placeholder')}
+              placeholderTextColor="#555"
               value={firstName}
               onChangeText={setFirstName}
             />
             <TextInput
               style={styles.input}
               placeholder={t('auth.last_name_placeholder')}
+              placeholderTextColor="#555"
               value={lastName}
               onChangeText={setLastName}
             />
             <TextInput
               style={styles.input}
               placeholder={t('auth.password_placeholder')}
+              placeholderTextColor="#555"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -150,6 +155,7 @@ export default function AuthScreen() {
             <TextInput
               style={styles.input}
               placeholder={t('auth.confirm_password_placeholder')}
+              placeholderTextColor="#555"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry

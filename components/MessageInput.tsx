@@ -20,7 +20,7 @@ export default function MessageInput({
         value={message}
         onChangeText={setMessage}
         placeholder={t('chat.input_placeholder')}
-        placeholderTextColor="#999"
+        placeholderTextColor="#555"
         multiline
       />
       <TouchableOpacity style={styles.sendButton} onPress={onSend}>

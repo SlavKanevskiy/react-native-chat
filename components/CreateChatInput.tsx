@@ -22,6 +22,7 @@ export default function CreateChatInput({
       <TextInput
         style={[styles.addUserInput, hasError && styles.errorInput]}
         placeholder={t('chatList.placeholder_email')}
+        placeholderTextColor="#555"
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"

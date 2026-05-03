@@ -43,3 +43,6 @@ yarn-error.*
 #ide
 .vscode
 .idea
+
+# EAS
+eas.json
