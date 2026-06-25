@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Button } from 'react-native';
-import { auth, db } from '../utils/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
-import { useRouter } from 'expo-router';
-import { useTranslation } from 'react-i18next';
+import {useRouter} from 'expo-router';
+import {createUserWithEmailAndPassword, signInWithEmailAndPassword} from 'firebase/auth';
+import {collection, doc, getDocs, query, setDoc, where} from 'firebase/firestore';
+import React, {useEffect, useRef, useState} from 'react';
+import {useTranslation} from 'react-i18next';
+import {ActivityIndicator, Alert, Button, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View} from 'react-native';
+import {getAutochatConfig} from '../utils/autochat';
+import {auth, db} from '../utils/firebase';
 
 export default function AuthScreen() {
   const router = useRouter();
   const { t, i18n } = useTranslation();
+  const autoLoginStartedRef = useRef(false);
   const [step, setStep] = useState<'email' | 'login' | 'register'>('email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,13 +19,54 @@ export default function AuthScreen() {
   const [lastName, setLastName] = useState('');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (autoLoginStartedRef.current) {
+      return;
+    }
+
+    const config = getAutochatConfig();
+    if (!config) {
+      return;
+    }
+
+    autoLoginStartedRef.current = true;
+    let cancelled = false;
+
+    const runAutoLogin = async () => {
+      setLoading(true);
+      setEmail(config.email);
+      setPassword(config.password);
+
+      try {
+        if (!auth.currentUser) {
+          await signInWithEmailAndPassword(auth, config.email, config.password);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          autoLoginStartedRef.current = false;
+          Alert.alert(t('auth.title_login'), `${t('auth.error_login')}\n${e?.message || ''}`.trim());
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    runAutoLogin();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, t]);
+
   const checkEmail = async () => {
     if (!email.trim()) return Alert.alert(t('auth.title_email'), t('auth.error_email_empty'));
     setLoading(true);
     try {
       const q = query(collection(db, 'users'), where('email', '==', email.trim().toLowerCase()));
       const snapshot = await getDocs(q);
-      
+
       if (snapshot.empty) {
         setStep('register');
       } else {
@@ -52,18 +95,18 @@ export default function AuthScreen() {
   const handleRegister = async () => {
     if (!firstName || !lastName || !password) return Alert.alert(t('auth.title_register'), t('auth.error_fill_all'));
     if (password !== confirmPassword) return Alert.alert(t('auth.title_register'), t('auth.error_passwords_dont_match'));
-    
+
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
       const user = userCredential.user;
-      
+
       await setDoc(doc(db, 'users', user.uid), {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim().toLowerCase()
       });
-      
+
       router.replace('/');
     } catch (e: any) {
       Alert.alert(t('auth.title_register'), e.message);

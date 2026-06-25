@@ -1,13 +1,15 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { auth } from '../utils/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { View, ActivityIndicator } from 'react-native';
 import '../utils/i18n';
+import { getAutochatConfig, isAutochatProfileEnabled } from '../utils/autochat';
 
 export default function RootLayout() {
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const autochatRedirectDoneRef = useRef(false);
   const router = useRouter();
   const segments = useSegments();
 
@@ -23,11 +25,31 @@ export default function RootLayout() {
     if (initializing) return;
 
     const inAuthGroup = segments[0] === 'auth';
+    const inChatGroup = segments[0] === 'chat';
 
     if (!user && !inAuthGroup) {
       // Redirect to the login page.
       router.replace('/auth');
-    } else if (user && inAuthGroup) {
+      return;
+    }
+
+    if (user && isAutochatProfileEnabled() && !autochatRedirectDoneRef.current) {
+      const config = getAutochatConfig();
+      if (config && !inChatGroup) {
+        autochatRedirectDoneRef.current = true;
+        router.replace({
+          pathname: '/chat/[id]',
+          params: {
+            id: config.chatId,
+            chatName: config.chatName || 'Global chat',
+            chatEmail: config.chatEmail || '',
+          },
+        });
+        return;
+      }
+    }
+
+    if (user && inAuthGroup) {
       // Redirect away from the login page.
       router.replace('/');
     }

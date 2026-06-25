@@ -1,0 +1,28 @@
+FROM node:20-alpine AS builder
+
+ARG FIREBASE_API_KEY
+ARG FIREBASE_AUTH_DOMAIN
+ARG FIREBASE_PROJECT_ID
+ARG FIREBASE_STORAGE_BUCKET
+ARG FIREBASE_MESSAGING_SENDER_ID
+ARG FIREBASE_APP_ID
+
+ENV EXPO_PUBLIC_FIREBASE_API_KEY=$FIREBASE_API_KEY \
+    EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=$FIREBASE_AUTH_DOMAIN \
+    EXPO_PUBLIC_FIREBASE_PROJECT_ID=$FIREBASE_PROJECT_ID \
+    EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=$FIREBASE_STORAGE_BUCKET \
+    EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$FIREBASE_MESSAGING_SENDER_ID \
+    EXPO_PUBLIC_FIREBASE_APP_ID=$FIREBASE_APP_ID
+
+WORKDIR /app
+COPY package.json yarn.lock .yarnrc.yml ./
+RUN corepack enable && yarn install --immutable
+COPY . .
+RUN npx expo export --platform web
+RUN node scripts/build-widget.mjs
+
+FROM nginx:alpine AS serve
+# Expo web app + widget JS
+COPY --from=builder /app/dist/ /usr/share/nginx/html/
+# COPY docker/demo.html /usr/share/nginx/html/demo.html
+EXPOSE 80
